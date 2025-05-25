@@ -1,17 +1,12 @@
 const express = require('express');
 const multer = require('multer');
 const admin = require('firebase-admin');
-const path = require('path');
+const cors = require('cors');
 
-// ✅ Use environment variable for Firebase Admin SDK credentials
-let serviceAccount;
-if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-} else {
-  // Fallback for local development (don't commit this file to GitHub)
-  serviceAccount = require('./alphie3000-firebase-adminsdk-fbsvc-2fd09baecd.json');
-}
+// ✅ Parse service account from environment variable
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
+// ✅ Initialize Firebase Admin
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   storageBucket: 'alphie3000.appspot.com',
@@ -21,15 +16,17 @@ const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
 const app = express();
+app.use(cors()); // ✅ Enable CORS if calling from frontend
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ✅ Multer setup for in-memory uploads
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB max
+  limits: { fileSize: 100 * 1024 * 1024 }, // Max: 100MB
 });
 
-// ✅ Upload Video Endpoint
+// ✅ Upload video endpoint
 app.post('/upload', upload.single('video'), async (req, res) => {
   const { file } = req;
   const { userId, username, title, description } = req.body;
@@ -58,7 +55,7 @@ app.post('/upload', upload.single('video'), async (req, res) => {
       const videoData = {
         user: {
           id: userId,
-          username: username,
+          username,
         },
         title: title || 'Untitled',
         description: description || 'No description',
@@ -83,28 +80,29 @@ app.post('/upload', upload.single('video'), async (req, res) => {
   blobStream.end(file.buffer);
 });
 
-// ✅ Fetch All Videos
+// ✅ Get all videos
 app.get('/videos', async (req, res) => {
   try {
     const snapshot = await db.collection('videos').orderBy('timestamp', 'desc').get();
     if (snapshot.empty) return res.status(200).json([]);
-    const videos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const videos = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     res.status(200).json(videos);
   } catch (error) {
     res.status(500).json({ error: `Error fetching videos: ${error.message}` });
   }
 });
 
-// ✅ Ranked Users by Likes
+// ✅ Rank users by likes
 app.get('/ranked-users', async (req, res) => {
   try {
     const snapshot = await db.collection('videos').get();
     if (snapshot.empty) return res.status(200).json([]);
 
     const userStats = {};
-    snapshot.docs.forEach(doc => {
+    snapshot.docs.forEach((doc) => {
       const { user, likes = 0 } = doc.data();
       if (!user || !user.id) return;
+
       if (!userStats[user.id]) {
         userStats[user.id] = { username: user.username, likes: 0 };
       }
@@ -121,7 +119,6 @@ app.get('/ranked-users', async (req, res) => {
   }
 });
 
-// ✅ Start Server
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
