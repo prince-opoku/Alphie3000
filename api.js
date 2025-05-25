@@ -3,12 +3,18 @@ const multer = require('multer');
 const admin = require('firebase-admin');
 const path = require('path');
 
-// ✅ Initialize Firebase Admin SDK
-const serviceAccount = require(path.resolve(__dirname, 'C:/Users/FUJISU/Desktop/rrroott/alphie/alphie3000-firebase-adminsdk-fbsvc-2fd09baecd.json'));
+// ✅ Use environment variable for Firebase Admin SDK credentials
+let serviceAccount;
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} else {
+  // Fallback for local development (don't commit this file to GitHub)
+  serviceAccount = require('./alphie3000-firebase-adminsdk-fbsvc-2fd09baecd.json');
+}
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  storageBucket: 'alphie3000.appspot.com'
+  storageBucket: 'alphie3000.appspot.com',
 });
 
 const db = admin.firestore();
@@ -20,7 +26,7 @@ app.use(express.urlencoded({ extended: true }));
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 } // 100MB max
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB max
 });
 
 // ✅ Upload Video Endpoint
@@ -36,7 +42,7 @@ app.post('/upload', upload.single('video'), async (req, res) => {
 
   const blobStream = videoFile.createWriteStream({
     resumable: false,
-    metadata: { contentType: file.mimetype }
+    metadata: { contentType: file.mimetype },
   });
 
   blobStream.on('error', (err) => {
@@ -46,15 +52,13 @@ app.post('/upload', upload.single('video'), async (req, res) => {
 
   blobStream.on('finish', async () => {
     try {
-      // Make the file public and get URL
       await videoFile.makePublic();
       const downloadURL = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
 
-      // ✅ Save everything under the videos collection
       const videoData = {
         user: {
           id: userId,
-          username: username
+          username: username,
         },
         title: title || 'Untitled',
         description: description || 'No description',
@@ -65,12 +69,11 @@ app.post('/upload', upload.single('video'), async (req, res) => {
         dislikes: 0,
         hearts: 0,
         money: 0,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
       };
 
       const docRef = await db.collection('videos').add(videoData);
       res.status(200).json({ id: docRef.id, ...videoData });
-
     } catch (error) {
       console.error('❌ Upload error:', error);
       res.status(500).json({ error: `Error saving metadata: ${error.message}` });
@@ -80,7 +83,7 @@ app.post('/upload', upload.single('video'), async (req, res) => {
   blobStream.end(file.buffer);
 });
 
-// ✅ Fetch All Videos Endpoint
+// ✅ Fetch All Videos
 app.get('/videos', async (req, res) => {
   try {
     const snapshot = await db.collection('videos').orderBy('timestamp', 'desc').get();
@@ -92,7 +95,7 @@ app.get('/videos', async (req, res) => {
   }
 });
 
-// ✅ Rank Users by Likes
+// ✅ Ranked Users by Likes
 app.get('/ranked-users', async (req, res) => {
   try {
     const snapshot = await db.collection('videos').get();
@@ -102,7 +105,6 @@ app.get('/ranked-users', async (req, res) => {
     snapshot.docs.forEach(doc => {
       const { user, likes = 0 } = doc.data();
       if (!user || !user.id) return;
-
       if (!userStats[user.id]) {
         userStats[user.id] = { username: user.username, likes: 0 };
       }
@@ -119,5 +121,7 @@ app.get('/ranked-users', async (req, res) => {
   }
 });
 
+// ✅ Start Server
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
