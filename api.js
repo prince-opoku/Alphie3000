@@ -3,7 +3,7 @@ const multer = require('multer');
 const admin = require('firebase-admin');
 const cors = require('cors');
 
-// ✅ Parse service account from environment variable
+// ✅ Parse service account from environment variable (set as stringified JSON)
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 // ✅ Initialize Firebase Admin
@@ -16,14 +16,14 @@ const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
 const app = express();
-app.use(cors()); // ✅ Enable CORS if calling from frontend
+app.use(cors()); // ✅ Enable CORS
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Multer setup for in-memory uploads
+// ✅ Multer setup for in-memory uploads, max 50MB
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 }, // Max: 100MB
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 });
 
 // ✅ Upload video endpoint
@@ -53,10 +53,7 @@ app.post('/upload', upload.single('video'), async (req, res) => {
       const downloadURL = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
 
       const videoData = {
-        user: {
-          id: userId,
-          username,
-        },
+        user: { id: userId, username },
         title: title || 'Untitled',
         description: description || 'No description',
         storagePath: fileName,
@@ -80,11 +77,10 @@ app.post('/upload', upload.single('video'), async (req, res) => {
   blobStream.end(file.buffer);
 });
 
-// ✅ Get all videos
+// ✅ Fetch all videos
 app.get('/videos', async (req, res) => {
   try {
     const snapshot = await db.collection('videos').orderBy('timestamp', 'desc').get();
-    if (snapshot.empty) return res.status(200).json([]);
     const videos = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     res.status(200).json(videos);
   } catch (error) {
@@ -96,9 +92,8 @@ app.get('/videos', async (req, res) => {
 app.get('/ranked-users', async (req, res) => {
   try {
     const snapshot = await db.collection('videos').get();
-    if (snapshot.empty) return res.status(200).json([]);
-
     const userStats = {};
+
     snapshot.docs.forEach((doc) => {
       const { user, likes = 0 } = doc.data();
       if (!user || !user.id) return;
@@ -121,4 +116,3 @@ app.get('/ranked-users', async (req, res) => {
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-
